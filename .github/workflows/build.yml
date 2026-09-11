@@ -60,6 +60,14 @@ jobs:
           '
           ls -l dist/cdn
 
+      # This job ships `dist/` as it is committed, so security patches have to be
+      # applied to the built files as well as to `src/`. Parse both before packing
+      # so a malformed edit can never reach the tarball.
+      - name: Syntax-check the shipped dist files
+        run: |
+          node --check dist/jquery.js
+          node --check dist/jquery.min.js
+
       - name: npm pack with the release-era Node/npm
         run: |
           # This workflow is ours, not the project's — it must not land in the
