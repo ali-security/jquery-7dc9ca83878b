@@ -1,3 +1,10 @@
 language: node_js
 node_js:
 - '0.10'
+services:
+- docker
+script:
+# The project's own command: grunt (jsonlint, build, jshint, jscs, uglify, dist).
+- npm test
+# The QUnit browser suite, which upstream ran through TestSwarm.
+- bash .github/travis/run-browser-tests.sh

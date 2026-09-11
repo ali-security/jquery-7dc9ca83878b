@@ -1,0 +1,76 @@
+name: build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # jQuery 1.11.1 ships its release `dist/` in the repo and the published
+      # tarball is that tree packed as-is, so this job only packs. The test
+      # legs run on Travis (.travis.yml).
+
+      # `dist/cdn/` is produced by build/release.js::makeReleaseCopies at
+      # release time (not by `grunt`), and the published tarball contains it.
+      # This mirrors that function exactly for version 1.11.1.
+      - name: Generate the release CDN copies (build/release.js)
+        run: |
+          node -e '
+            var fs = require("fs");
+            var VER = require("./package.json").version;
+            var devFile = "dist/jquery.js",
+                minFile = "dist/jquery.min.js",
+                mapFile = "dist/jquery.min.map";
+            var releaseFiles = {
+              "jquery-VER.js": devFile,
+              "jquery-VER.min.js": minFile,
+              "jquery-VER.min.map": mapFile,
+              "jquery.js": devFile,
+              "jquery.min.js": minFile,
+              "jquery.min.map": mapFile,
+              "jquery-latest.js": devFile,
+              "jquery-latest.min.js": minFile,
+              "jquery-latest.min.map": mapFile
+            };
+            fs.mkdirSync("dist/cdn", { recursive: true });
+            Object.keys(releaseFiles).forEach(function (key) {
+              var builtFile = releaseFiles[key],
+                  unpathedFile = key.replace(/VER/g, VER),
+                  releaseFile = "dist/cdn/" + unpathedFile,
+                  text;
+              if (/\.map$/.test(releaseFile)) {
+                text = fs.readFileSync(builtFile, "utf8").replace(
+                  /"file":"([^"]+)","sources":\["([^"]+)"\]/,
+                  "\"file\":\"" + unpathedFile.replace(/\.min\.map/, ".min.js") +
+                    "\",\"sources\":[\"" + unpathedFile.replace(/\.min\.map/, ".js") + "\"]"
+                );
+                fs.writeFileSync(releaseFile, text);
+              } else if (/\.min\.js$/.test(releaseFile)) {
+                text = fs.readFileSync(builtFile, "utf8")
+                  .replace(/\/\/# sourceMappingURL=\S+/, "");
+                fs.writeFileSync(releaseFile, text);
+              } else {
+                fs.writeFileSync(releaseFile, fs.readFileSync(builtFile));
+              }
+            });
+          '
+          ls -l dist/cdn
+
+      - name: npm pack with the release-era Node/npm
+        run: |
+          # This workflow is ours, not the project's — it must not land in the
+          # tarball, and nothing under .github is published upstream.
+          rm -rf .github
+          docker run --rm -v "$PWD":/work -w /work node:0.10-wheezy \
+            sh -c 'npm --version && node --version && npm pack'
+          ls -l *.tgz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: jquery-1.11.1.tgz
+          if-no-files-found: error
